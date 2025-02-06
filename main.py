@@ -1,67 +1,67 @@
 import numpy as np
-import pandas as pd
 
-# Function to parse the PQR file
-def parse_pqr(file_path):
-    protein_data = []
+def read_pqr_atoms_fixed(file_path):
+    """ Reads atomic data from a PQR file and extracts (x, y, z, radius). """
+    atoms = []
     with open(file_path, "r") as file:
-        lines = file.readlines()
-    
-    for line in lines:
-        parts = line.split()
-        if line.startswith("ATOM"):  # Relevant data lines start with "ATOM"
-            atom_number = int(parts[1])
-            element = parts[2]
-            x, y, z = map(float, parts[5:8])
-            radius = float(parts[-1])  # Radius is the last field
-            protein_data.append((atom_number, element, x, y, z, radius))
-    
-    return pd.DataFrame(protein_data, columns=["Atom Number", "Element", "X", "Y", "Z", "Radius"])
+        for line in file:
+            if line.startswith("ATOM"):
+                parts = line.strip().split()
+                try:
+                    x, y, z = map(float, parts[5:8])  # Extract x, y, z coordinates
+                    r = float(parts[-1])  # Extract radius (always the last column)
+                    atoms.append((x, y, z, r))
+                except ValueError:
+                    print(f"Skipping malformed line: {line.strip()}")
+    return atoms
 
-# Load the `protein.pqr` file
-protein_df = parse_pqr("protein.pqr")
+def compute_bounding_box(atoms, margin=2.0):
+    """ Computes the bounding box dimensions for the protein. """
+    min_x = min(atom[0] - atom[3] for atom in atoms)
+    max_x = max(atom[0] + atom[3] for atom in atoms)
+    min_y = min(atom[1] - atom[3] for atom in atoms)
+    max_y = max(atom[1] + atom[3] for atom in atoms)
+    min_z = min(atom[2] - atom[3] for atom in atoms)
+    max_z = max(atom[2] + atom[3] for atom in atoms)
 
-# Compute the bounding box for the protein
-buffer = protein_df["Radius"].max()
-min_x, max_x = protein_df["X"].min() - buffer, protein_df["X"].max() + buffer
-min_y, max_y = protein_df["Y"].min() - buffer, protein_df["Y"].max() + buffer
-min_z, max_z = protein_df["Z"].min() - buffer, protein_df["Z"].max() + buffer
+    return (min_x - margin, max_x + margin, 
+            min_y - margin, max_y + margin, 
+            min_z - margin, max_z + margin)
 
-# Generate random points within the bounding box
-num_samples = 1000000  # High resolution for accuracy
-random_points = np.random.uniform(
-    [min_x, min_y, min_z], [max_x, max_y, max_z], size=(num_samples, 3)
-)
-
-# Prepare atom data for faster computation
-atoms = protein_df[["X", "Y", "Z", "Radius"]].values
-
-# Monte Carlo function to count points inside spheres
-def count_inside_points(random_points, atoms):
-    inside_count = 0
+def is_inside_atom(x, y, z, atoms):
+    """ Checks if a point (x, y, z) is inside any atomic sphere. """
     for atom in atoms:
-        atom_x, atom_y, atom_z, radius = atom
-        distances = np.linalg.norm(random_points - np.array([atom_x, atom_y, atom_z]), axis=1)
-        inside_count += np.sum(distances <= radius)
-    return inside_count
+        ax, ay, az, r = atom
+        if (x - ax) ** 2 + (y - ay) ** 2 + (z - az) ** 2 <= r ** 2:
+            return True
+    return False
 
-# Count points inside any atom's sphere
-inside_count = count_inside_points(random_points, atoms)
+def estimate_protein_volume_fixed(file_path, num_samples=100000):
+    """ Estimates protein volume using a Monte Carlo voxel-based approach. """
+    atoms = read_pqr_atoms_fixed(file_path)
+    if not atoms:
+        raise ValueError("No atoms found in the input file.")
 
-# Compute the bounding box volume
-bounding_box_volume = (max_x - min_x) * (max_y - min_y) * (max_z - min_z)
+    min_x, max_x, min_y, max_y, min_z, max_z = compute_bounding_box(atoms)
 
-# Estimate the protein volume
-computed_volume = bounding_box_volume * (inside_count / num_samples)
+    # Compute bounding box volume
+    box_volume = (max_x - min_x) * (max_y - min_y) * (max_z - min_z)
 
-# Known expected volume for 1VII
-expected_volume = 3000  # Approximate value in Å³ for villin headpiece
+    # Generate random sample points
+    inside_count = 0
+    for _ in range(num_samples):
+        x = np.random.uniform(min_x, max_x)
+        y = np.random.uniform(min_y, max_y)
+        z = np.random.uniform(min_z, max_z)
+        if is_inside_atom(x, y, z, atoms):
+            inside_count += 1
 
-# Compute the relative error
-relative_error = abs((computed_volume - expected_volume) / expected_volume) * 100
+    # Compute estimated protein volume
+    protein_volume = box_volume * (inside_count / num_samples)
+    return protein_volume
 
-# Print the results
-print(f"Protein: Villin Headpiece Subdomain (PDB 1VII)")
-print(f"Computed Volume: {computed_volume:.2f} Å³")
-print(f"Expected Volume: {expected_volume:.2f} Å³")
-print(f"Relative Error: {relative_error:.2f}%")
+# Run the corrected volume estimation
+file_path = "protein.pqr"  # Replace with the actual file path if needed
+estimated_volume_fixed = estimate_protein_volume_fixed(file_path, num_samples=100000)
+
+print(f"Estimated protein volume: {estimated_volume_fixed:.2f} Å³")
