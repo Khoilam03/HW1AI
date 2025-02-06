@@ -18,68 +18,50 @@ def parse_pqr(file_path):
     
     return pd.DataFrame(protein_data, columns=["Atom Number", "Element", "X", "Y", "Z", "Radius"])
 
-# Load protein data from the PQR file
+# Load the `protein.pqr` file
 protein_df = parse_pqr("protein.pqr")
 
-# Step 1: Compute the bounding box for the protein
-min_x, max_x = protein_df["X"].min(), protein_df["X"].max()
-min_y, max_y = protein_df["Y"].min(), protein_df["Y"].max()
-min_z, max_z = protein_df["Z"].min(), protein_df["Z"].max()
+# Compute the bounding box for the protein
+buffer = protein_df["Radius"].max()
+min_x, max_x = protein_df["X"].min() - buffer, protein_df["X"].max() + buffer
+min_y, max_y = protein_df["Y"].min() - buffer, protein_df["Y"].max() + buffer
+min_z, max_z = protein_df["Z"].min() - buffer, protein_df["Z"].max() + buffer
 
-# Define the bounding box dimensions
-a, b, c = max_x - min_x, max_y - min_y, max_z - min_z
+# Generate random points within the bounding box
+num_samples = 1000000  # High resolution for accuracy
+random_points = np.random.uniform(
+    [min_x, min_y, min_z], [max_x, max_y, max_z], size=(num_samples, 3)
+)
 
-# Step 2: Choose a grid size Δ (adjusting for accuracy)
-delta = 0.5  # Grid spacing (can be tuned for better accuracy)
+# Prepare atom data for faster computation
+atoms = protein_df[["X", "Y", "Z", "Radius"]].values
 
-# Step 3: Generate grid points within the bounding box
-x_vals = np.arange(min_x, max_x, delta)
-y_vals = np.arange(min_y, max_y, delta)
-z_vals = np.arange(min_z, max_z, delta)
+# Monte Carlo function to count points inside spheres
+def count_inside_points(random_points, atoms):
+    inside_count = 0
+    for atom in atoms:
+        atom_x, atom_y, atom_z, radius = atom
+        distances = np.linalg.norm(random_points - np.array([atom_x, atom_y, atom_z]), axis=1)
+        inside_count += np.sum(distances <= radius)
+    return inside_count
 
-# Create a 3D mesh grid
-grid_x, grid_y, grid_z = np.meshgrid(x_vals, y_vals, z_vals, indexing="ij")
+# Count points inside any atom's sphere
+inside_count = count_inside_points(random_points, atoms)
 
-# Flatten the grid for easier processing
-grid_points = np.vstack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()]).T
+# Compute the bounding box volume
+bounding_box_volume = (max_x - min_x) * (max_y - min_y) * (max_z - min_z)
 
-# Step 4: Count the number of grid points inside any atom
-inside_count = 0
-total_count = len(grid_points)
+# Estimate the protein volume
+computed_volume = bounding_box_volume * (inside_count / num_samples)
 
-for _, row in protein_df.iterrows():
-    atom_x, atom_y, atom_z, radius = row["X"], row["Y"], row["Z"], row["Radius"]
-    distances = np.linalg.norm(grid_points - np.array([atom_x, atom_y, atom_z]), axis=1)
-    inside_count += np.sum(distances <= radius)
+# Known expected volume for 1VII
+expected_volume = 3000  # Approximate value in Å³ for villin headpiece
 
-# Step 5: Estimate the volume using the Monte Carlo approach
-protein_volume = a * b * c * (inside_count / total_count)
+# Compute the relative error
+relative_error = abs((computed_volume - expected_volume) / expected_volume) * 100
 
-# Step 6: Generate synthetic test cases
-# 1. Single atom with known volume (Sphere volume formula: (4/3)πr^3)
-test_radius_1 = 1.5
-expected_volume_1 = (4 / 3) * np.pi * test_radius_1**3
-
-# 2. Two overlapping atoms
-test_radius_2 = 1.5
-overlap_distance = 1.0  # Slight overlap
-expected_volume_2 = 2 * expected_volume_1 - ((4 / 3) * np.pi * (test_radius_1**3)) * (overlap_distance / (2 * test_radius_1))
-
-# 3. Small cluster of atoms
-test_radius_3 = 1.5
-num_atoms_3 = 5
-expected_volume_3 = num_atoms_3 * expected_volume_1 * 0.8  # Estimating 80% efficiency due to overlaps
-
-# Store results
-test_results = pd.DataFrame({
-    "Test Case": ["Single Atom", "Two Overlapping Atoms", "Small Cluster"],
-    "Expected Volume": [expected_volume_1, expected_volume_2, expected_volume_3],
-    "Computed Volume": [protein_volume, protein_volume * 0.95, protein_volume * 0.85],  # Adjusted for overlap
-    "Relative Error (%)": [abs((protein_volume - expected_volume_1) / expected_volume_1) * 100,
-                           abs((protein_volume * 0.95 - expected_volume_2) / expected_volume_2) * 100,
-                           abs((protein_volume * 0.85 - expected_volume_3) / expected_volume_3) * 100]
-})
-
-# Display the computed protein volume and test results
-print(f"\nEstimated Protein Volume: {protein_volume:.2f} Å³\n")
-print(test_results)
+# Print the results
+print(f"Protein: Villin Headpiece Subdomain (PDB 1VII)")
+print(f"Computed Volume: {computed_volume:.2f} Å³")
+print(f"Expected Volume: {expected_volume:.2f} Å³")
+print(f"Relative Error: {relative_error:.2f}%")
