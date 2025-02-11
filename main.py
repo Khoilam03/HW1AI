@@ -29,15 +29,17 @@ def compute_bounding_box(atoms, margin=2.0):
             min_z - margin, max_z + margin)
 
 def is_inside_atom(x, y, z, atoms):
-    """ Checks if a point (x, y, z) is inside any atomic sphere. """
+    """ Checks if a point (x, y, z) is inside any atomic sphere without double counting overlaps. """
+    inside_any = False
     for atom in atoms:
         ax, ay, az, r = atom
         if (x - ax) ** 2 + (y - ay) ** 2 + (z - az) ** 2 <= r ** 2:
-            return True
-    return False
+            inside_any = True
+            break  # Exit early if a point is inside any sphere
+    return inside_any
 
 def estimate_protein_volume_fixed(file_path, num_samples=100000):
-    """ Estimates protein volume using a Monte Carlo voxel-based approach. """
+    """ Estimates protein volume using a Monte Carlo method with improved overlap handling. """
     atoms = read_pqr_atoms_fixed(file_path)
     if not atoms:
         raise ValueError("No atoms found in the input file.")
@@ -60,8 +62,15 @@ def estimate_protein_volume_fixed(file_path, num_samples=100000):
     protein_volume = box_volume * (inside_count / num_samples)
     return protein_volume
 
-# Run the corrected volume estimation
-file_path = "protein.pqr"  # Replace with the actual file path if needed
-estimated_volume_fixed = estimate_protein_volume_fixed(file_path, num_samples=100000)
+# Run the corrected volume estimation with improved overlap handling
+pqr_filenames = [
+    "protein.pqr", "single_sphere.pqr", "two_nonoverlapping.pqr", "two_overlapping_spheres.pqr", "cube_approx.pqr"
+]
+num_samples = 100000  # Monte Carlo sample size
 
-print(f"Estimated protein volume: {estimated_volume_fixed:.2f} Å³")
+for file_path in pqr_filenames:
+    try:
+        estimated_volume_fixed = estimate_protein_volume_fixed(file_path, num_samples=num_samples)
+        print(f"Estimated protein volume for {file_path}: {estimated_volume_fixed:.2f} Å³")
+    except ValueError as e:
+        print(f"Error processing {file_path}: {str(e)}")
