@@ -33,7 +33,7 @@ def is_inside_protein(x, y, z, atoms):
             return True
     return False
 
-def estimate_protein_volume(file_path, delta=0.3):
+def estimate_protein_volume(file_path, delta):
     """Estimates protein volume using a voxel-based approach."""
     atoms = read_pqr(file_path)
     if not atoms:
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         "two_overlapping_spheres.pqr",
         "cube_approx.pqr"
     ]
-    delta_value = 0.5  # Adjust voxel size
+    delta_value = 0.4  # Adjust voxel size
     
     for pqr_file in pqr_files:
         try:

@@ -64,7 +64,7 @@ def estimate_protein_volume_fixed(file_path, num_samples=100000):
 
 # Run the corrected volume estimation with improved overlap handling
 pqr_filenames = [
-    "protein.pqr", "single_sphere.pqr", "two_nonoverlapping.pqr", "two_overlapping_spheres.pqr", "cube_approx.pqr"
+    "protein.pqr", "single_sphere.pqr", "two_nonoverlapping.pqr", "two_overlapping_spheres.pqr", "cube_approx.pqr", "encapsulate_atom.pqr", "large_cluster.pqr"
 ]
 num_samples = 100000  # Monte Carlo sample size
 
